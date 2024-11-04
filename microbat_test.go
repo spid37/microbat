@@ -109,11 +109,6 @@ func mockBatchProcessorWithError(ctx context.Context, jobs ...Job) ([]JobResult,
 //
 // tests
 
-func TestMicroBatClientInit(t *testing.T) {
-	client := New(mockBatchProcessor, 2, time.Second*1)
-	defer client.Close()
-}
-
 func TestNextBatch(t *testing.T) {
 	t.Run("five batches of two", func(t *testing.T) {
 		client := New(mockBatchProcessor, 2, time.Second*5)
@@ -156,7 +151,6 @@ func TestNextBatch(t *testing.T) {
 
 func TestProcessJob(t *testing.T) {
 	client := New(mockBatchProcessorWithError, 1, time.Second*3)
-	defer client.Close()
 
 	t.Run("process a single job", func(t *testing.T) {
 		res, err := client.ProcessJob(context.Background(), &MockJob{id: "1"})
@@ -177,7 +171,6 @@ func TestProcessJob(t *testing.T) {
 
 	t.Run("single job returns error", func(t *testing.T) {
 		client := New(mockBatchProcessorWithError, 1, time.Second*3)
-		defer client.Close()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -191,7 +184,6 @@ func TestProcessJob(t *testing.T) {
 func TestProcessBatchJobs(t *testing.T) {
 	t.Run("five successful jobs in batches of two", func(t *testing.T) {
 		client := New(mockBatchProcessor, 2, time.Second*0)
-		defer client.Close()
 
 		// add 5 jobs
 		client.AddJob(newMockJobs(5)...)
@@ -208,7 +200,6 @@ func TestProcessBatchJobs(t *testing.T) {
 	t.Run("job processor returns an error with zero results", func(t *testing.T) {
 		// 11 job batch should trigger an error
 		client := New(mockBatchProcessorWithError, 11, time.Second*0)
-		defer client.Close()
 
 		client.AddJob(newMockJobs(11)...)
 		results, err := client.ProcessJobBatches(context.Background())
@@ -218,7 +209,6 @@ func TestProcessBatchJobs(t *testing.T) {
 
 	t.Run("job five should return an error response", func(t *testing.T) {
 		client := New(mockBatchProcessorWithError, 1, time.Second*0)
-		defer client.Close()
 
 		client.AddJob(newMockJobs(10)...)
 		results, err := client.ProcessJobBatches(context.Background())
@@ -237,7 +227,6 @@ func TestProcessBatchJobs(t *testing.T) {
 
 	t.Run("with a context timeout error", func(t *testing.T) {
 		client := New(mockBatchProcessorWithError, 1, time.Second*5)
-		defer client.Close()
 
 		client.AddJob(newMockJobs(10)...)
 

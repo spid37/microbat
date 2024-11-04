@@ -63,7 +63,6 @@ func main() {
 	}
 
 	client := microbat.New(batchProcessor, 3, time.Second*1)
-	defer client.Close()
 
 	client.AddJob(
 		&PrintJob{id: "one"},

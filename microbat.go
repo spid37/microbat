@@ -38,10 +38,6 @@ type Client struct {
 	jobs      []Job
 }
 
-func (c *Client) Close() error {
-	return nil
-}
-
 // AddJob adds jobs to the queue
 func (c *Client) AddJob(jobs ...Job) error {
 	c.jobLock.Lock()
@@ -103,23 +99,74 @@ func (c *Client) ProcessJob(ctx context.Context, job Job) (JobResult, error) {
 
 // ProcessJobBatches processes all jobs in the queue
 func (c *Client) ProcessJobBatches(ctx context.Context) ([]JobResult, error) {
-	if c.processor == nil {
-		return nil, errors.New("no batch processor func defined")
+	jobReturnChan, errChan, err := c.ProcessJobBatchesChannel(ctx)
+	if err != nil {
+		return nil, err
 	}
+
 	var jobResults []JobResult
-	for c.JobCount() > 0 {
-		jobs := c.GetNextBatch()
-		res, err := c.processor(ctx, jobs...)
-		if err != nil {
+
+	var resultClosed bool
+	var errClosed bool
+
+	for {
+		if resultClosed && errClosed {
+			// both channels are closed return the results
+			return jobResults, nil
+		}
+		select {
+		case res, ok := <-jobReturnChan:
+			if !ok {
+				// channel closed
+				resultClosed = true
+				continue
+			}
+			jobResults = append(jobResults, res)
+		case err, ok := <-errChan:
+			if !ok {
+				// channel closed
+				errClosed = true
+				continue
+			}
 			return nil, err
 		}
-		if len(res) > 0 {
-			jobResults = append(jobResults, res...)
+	}
+}
+
+// ProcessJobBatchesChannel processes all jobs in the queue and returns a channel of results
+func (c *Client) ProcessJobBatchesChannel(ctx context.Context) (<-chan JobResult, <-chan error, error) {
+	jobReturn := make(chan JobResult)
+	errChan := make(chan error)
+
+	if c.processor == nil {
+		return nil, nil, errors.New("no batch processor func defined")
+	}
+	go c.processBatches(ctx, jobReturn, errChan)
+
+	return jobReturn, errChan, nil
+}
+
+// processBatches processes all jobs in the queue
+func (c *Client) processBatches(ctx context.Context, jobReturn chan JobResult, errChan chan error) {
+	defer close(jobReturn)
+	defer close(errChan)
+
+	for c.JobCount() > 0 {
+		// get the next batch of jobs
+		jobs := c.GetNextBatch()
+		// process the batch
+		results, err := c.processor(ctx, jobs...)
+		if err != nil {
+			errChan <- err
+			return
 		}
+		// send the results back
+		for _, r := range results {
+			jobReturn <- r
+		}
+		// wait before processing the next batch
 		if c.waitTime > 0 {
 			time.Sleep(c.waitTime)
 		}
 	}
-
-	return jobResults, nil
 }
